@@ -17,7 +17,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("VoxMorph")
-        self.geometry("1260x660")
+        self.geometry("1260x680")
         self.resizable(False, False)
         self._image_path: str | None = None
         self._processed_path: str | None = None
@@ -25,7 +25,7 @@ class App(ctk.CTk):
         self._build_layout()
 
     def _set_window_icon(self) -> None:
-        # iconbitmap pour la barre de titre, iconphoto pour la taskbar windows
+        # iconbitmap for the title bar, iconphoto for the windows taskbar
         ico_path = ASSETS_DIR / "logo.ico"
         png_path = ASSETS_DIR / "logo.png"
         if ico_path.exists():
@@ -36,68 +36,79 @@ class App(ctk.CTk):
             self.iconphoto(True, self._taskbar_icon)
 
     def _build_layout(self) -> None:
-        # colonne gauche : image originale
+        # left column: original image
         self._left = ctk.CTkFrame(self, width=420, fg_color="#181825")
         self._left.pack(side="left", fill="y", padx=(16, 6), pady=16)
         self._left.pack_propagate(False)
 
         ctk.CTkLabel(
             self._left,
-            text="Image originale",
+            text="Original image",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color="#6c7086",
         ).pack(pady=(14, 4))
 
-        self._panel_original = ImagePanel(self._left, width=380, height=400)
-        self._panel_original.pack(padx=20, pady=(0, 10))
+        self._panel_original = ImagePanel(self._left, width=380, height=380)
+        self._panel_original.pack(padx=20, pady=(0, 8))
 
-        self._btn_select = ctk.CTkButton(
-            self._left,
-            text="Selectionner une image",
-            command=self._select_image,
-            fg_color="#313244",
-            hover_color="#45475a",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-        )
-        self._btn_select.pack(pady=(0, 8), padx=20, fill="x")
-
-        self._label_path = ctk.CTkLabel(
+        self._label_meta_original = ctk.CTkLabel(
             self._left,
             text="",
             text_color="#6c7086",
             font=ctk.CTkFont(family="Segoe UI", size=11),
             wraplength=360,
         )
-        self._label_path.pack(padx=20)
+        self._label_meta_original.pack(padx=20, pady=(0, 8))
 
-        # colonne centrale : resultat apres suppression de fond
+        self._btn_select = ctk.CTkButton(
+            self._left,
+            text="Select an image",
+            command=self._select_image,
+            fg_color="#313244",
+            hover_color="#45475a",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+        )
+        self._btn_select.pack(pady=(0, 6), padx=20, fill="x")
+
+        self._btn_reset = ctk.CTkButton(
+            self._left,
+            text="Reset",
+            command=self._reset,
+            fg_color="#313244",
+            hover_color="#45475a",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            state="disabled",
+        )
+        self._btn_reset.pack(padx=20, fill="x")
+
+        # center column: background-removed result
         self._mid = ctk.CTkFrame(self, width=420, fg_color="#181825")
         self._mid.pack(side="left", fill="y", padx=6, pady=16)
         self._mid.pack_propagate(False)
 
         ctk.CTkLabel(
             self._mid,
-            text="Apres suppression du fond",
+            text="Background removed",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color="#6c7086",
         ).pack(pady=(14, 4))
 
-        self._panel_processed = ImagePanel(self._mid, width=380, height=400)
-        self._panel_processed.pack(padx=20, pady=(0, 10))
+        self._panel_processed = ImagePanel(self._mid, width=380, height=380)
+        self._panel_processed.pack(padx=20, pady=(0, 8))
 
-        self._label_processed = ctk.CTkLabel(
+        self._label_meta_processed = ctk.CTkLabel(
             self._mid,
             text="",
             text_color="#6c7086",
             font=ctk.CTkFont(family="Segoe UI", size=11),
         )
-        self._label_processed.pack(padx=20)
+        self._label_meta_processed.pack(padx=20)
 
-        # colonne droite : titre et actions
+        # right column: header and controls
         self._right = ctk.CTkFrame(self, fg_color="#181825")
         self._right.pack(side="right", fill="both", expand=True, padx=(6, 16), pady=16)
 
-        # header : logo + titre
+        # header: logo + title
         header = ctk.CTkFrame(self._right, fg_color="transparent")
         header.pack(pady=(28, 4))
 
@@ -119,7 +130,7 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             self._right,
-            text="Reconstruction 3D depuis une image 2D",
+            text="3D reconstruction from a 2D image",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color="#6c7086",
         ).pack(pady=(0, 24))
@@ -130,7 +141,7 @@ class App(ctk.CTk):
 
         self._btn_run = ctk.CTkButton(
             self._right,
-            text="Lancer reconstruction",
+            text="Start reconstruction",
             command=self._on_run,
             height=44,
             fg_color="#89b4fa",
@@ -141,7 +152,7 @@ class App(ctk.CTk):
         )
         self._btn_run.pack(padx=24, fill="x")
 
-        # barre de progression indeterminee visible uniquement pendant le traitement
+        # indeterminate progress bar, visible only during processing
         self._progress = ctk.CTkProgressBar(
             self._right,
             mode="indeterminate",
@@ -162,8 +173,8 @@ class App(ctk.CTk):
 
     def _select_image(self) -> None:
         path = filedialog.askopenfilename(
-            title="Choisir une image",
-            filetypes=[("images", "*.png *.jpg *.jpeg *.webp *.bmp")],
+            title="Select an image",
+            filetypes=[("Images", "*.png *.jpg *.jpeg *.webp *.bmp")],
         )
         if not path:
             return
@@ -171,22 +182,42 @@ class App(ctk.CTk):
         self._processed_path = None
         self._panel_original.load_image(path)
         self._panel_processed.clear()
-        self._label_path.configure(text=Path(path).name)
-        self._label_processed.configure(text="")
+
+        # display original image metadata
+        img = Image.open(path)
+        size_kb = Path(path).stat().st_size // 1024
+        self._label_meta_original.configure(
+            text=f"{Path(path).name}  •  {img.width}x{img.height}  •  {size_kb} KB"
+        )
+        self._label_meta_processed.configure(text="")
         self._btn_run.configure(state="normal")
+        self._btn_reset.configure(state="normal")
         self._status_label.configure(text="")
         self._progress.set(0)
 
+    def _reset(self) -> None:
+        self._image_path = None
+        self._processed_path = None
+        self._panel_original.clear()
+        self._panel_processed.clear()
+        self._label_meta_original.configure(text="")
+        self._label_meta_processed.configure(text="")
+        self._status_label.configure(text="")
+        self._progress.set(0)
+        self._btn_run.configure(state="disabled")
+        self._btn_reset.configure(state="disabled")
+
     def _set_status(self, text: str, color: str = "#f9e2af") -> None:
-        # mise a jour du label de statut depuis le thread principal ou secondaire
+        # updates the status label from any thread
         post_to_main(self._status_label.configure, text=text, text_color=color)
 
     def _on_run(self) -> None:
-        # desactive le bouton et demarre la progression pendant le traitement
+        # disables controls and starts the progress bar during processing
         self._btn_run.configure(state="disabled")
         self._btn_select.configure(state="disabled")
+        self._btn_reset.configure(state="disabled")
         self._progress.start()
-        self._status_label.configure(text="Initialisation...", text_color="#f9e2af")
+        self._status_label.configure(text="Initializing...", text_color="#f9e2af")
         run_in_thread(
             self._run_pipeline,
             on_done=self._on_pipeline_done,
@@ -196,32 +227,37 @@ class App(ctk.CTk):
     def _run_pipeline(self) -> None:
         from core.preprocessing import remove_background, normalize
 
-        self._set_status("Chargement du modele de segmentation...")
+        self._set_status("Loading segmentation model...")
         result = remove_background(self._image_path)
 
-        self._set_status("Normalisation en cours (512x512)...")
+        self._set_status("Normalizing image (512x512)...")
         result = normalize(result, size=512)
 
-        out_path = TEMP_DIR / "preprocessed.png"
+        # save result using the original filename for traceability
+        stem = Path(self._image_path).stem
+        out_path = TEMP_DIR / f"{stem}_preprocessed.png"
         result.save(str(out_path))
         self._processed_path = str(out_path)
 
     def _on_pipeline_done(self) -> None:
         self._progress.stop()
         self._progress.set(1)
+
+        # display processed image with its metadata
         self._panel_processed.load_image(self._processed_path)
-        self._label_processed.configure(text="Fond supprime — 512x512")
-        self._status_label.configure(
-            text="Preprocessing termine.", text_color="#a6e3a1"
+        size_kb = Path(self._processed_path).stat().st_size // 1024
+        self._label_meta_processed.configure(
+            text=f"512x512  •  RGBA  •  {size_kb} KB"
         )
+        self._status_label.configure(text="Preprocessing complete.", text_color="#a6e3a1")
         self._btn_run.configure(state="normal")
         self._btn_select.configure(state="normal")
+        self._btn_reset.configure(state="normal")
 
     def _on_pipeline_error(self, exc: Exception) -> None:
         self._progress.stop()
         self._progress.set(0)
-        self._status_label.configure(
-            text=f"Erreur : {exc}", text_color="#f38ba8"
-        )
+        self._status_label.configure(text=f"Error: {exc}", text_color="#f38ba8")
         self._btn_run.configure(state="normal")
         self._btn_select.configure(state="normal")
+        self._btn_reset.configure(state="normal")

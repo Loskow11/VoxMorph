@@ -9,7 +9,8 @@ def run_in_thread(
     on_error: Callable | None = None,
     daemon: bool = True,
 ) -> threading.Thread:
-    # lance target dans un thread separe, on_done et on_error sont rappeles via after() dans le thread principal
+    # runs target in a background thread, on_done and on_error are dispatched
+    # to the main thread via after()
     import tkinter as tk
 
     root = tk._default_root
@@ -29,7 +30,7 @@ def run_in_thread(
 
 
 def post_to_main(callback: Callable, *args) -> None:
-    # envoie un appel dans le thread principal depuis n'importe quel thread
+    # dispatches a call to the main thread from any thread
     import tkinter as tk
     root = tk._default_root
     if root:

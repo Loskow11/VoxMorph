@@ -3,7 +3,7 @@ from PIL import Image
 from rembg import remove, new_session
 
 
-# session rembg chargee une seule fois pour eviter le rechargement du modele
+# rembg session loaded once to avoid reloading the model on each call
 _session = None
 
 
@@ -15,7 +15,7 @@ def _get_session():
 
 
 def remove_background(image_path: str | Path) -> Image.Image:
-    # supprime le fond de l'image et retourne une image RGBA
+    # removes the background and returns an RGBA image
     with open(image_path, "rb") as f:
         raw = f.read()
     result = remove(raw, session=_get_session())
@@ -24,7 +24,7 @@ def remove_background(image_path: str | Path) -> Image.Image:
 
 
 def normalize(image: Image.Image, size: int = 512) -> Image.Image:
-    # redimensionne en conservant le ratio dans un carre size x size
+    # resizes while preserving aspect ratio, centered on a size x size canvas
     image.thumbnail((size, size), Image.LANCZOS)
     canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     offset = ((size - image.width) // 2, (size - image.height) // 2)
