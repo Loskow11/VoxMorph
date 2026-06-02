@@ -1,4 +1,3 @@
-import ctypes
 import customtkinter as ctk
 from tkinter import filedialog
 from PIL import Image, ImageTk
@@ -12,11 +11,6 @@ ctk.set_default_color_theme("blue")
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
-# force windows a associer l'icone au process plutot qu'a l'interpreteur python
-try:
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("voxmorph.app")
-except Exception:
-    pass
 
 
 class App(ctk.CTk):
