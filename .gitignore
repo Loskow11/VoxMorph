@@ -11,5 +11,4 @@ build/
 .idea/
 .vscode/
 *.log
-assets/
 models/

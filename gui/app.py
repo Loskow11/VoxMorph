@@ -1,11 +1,15 @@
 import customtkinter as ctk
 from tkinter import filedialog
+from PIL import Image, ImageTk
+from pathlib import Path
 from gui.widgets.image_panel import ImagePanel
 from utils.thread_worker import run_in_thread
 
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
+
+ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
 
 class App(ctk.CTk):
@@ -15,7 +19,16 @@ class App(ctk.CTk):
         self.geometry("900x620")
         self.resizable(False, False)
         self._image_path: str | None = None
+        self._set_window_icon()
         self._build_layout()
+
+    def _set_window_icon(self) -> None:
+        # definit l'icone de la barre de titre et de la taskbar
+        icon_path = ASSETS_DIR / "logo.png"
+        if icon_path.exists():
+            img = Image.open(icon_path).resize((32, 32), Image.LANCZOS)
+            self._icon_photo = ImageTk.PhotoImage(img)
+            self.iconphoto(True, self._icon_photo)
 
     def _build_layout(self) -> None:
         # colonne gauche : panneau image
@@ -49,12 +62,25 @@ class App(ctk.CTk):
         self._right = ctk.CTkFrame(self, fg_color="#181825")
         self._right.pack(side="right", fill="both", expand=True, padx=(8, 16), pady=16)
 
+        # header : logo + titre sur la meme ligne
+        header = ctk.CTkFrame(self._right, fg_color="transparent")
+        header.pack(pady=(28, 4))
+
+        logo_path = ASSETS_DIR / "logo.png"
+        if logo_path.exists():
+            logo_img = ctk.CTkImage(
+                light_image=Image.open(logo_path),
+                dark_image=Image.open(logo_path),
+                size=(38, 38),
+            )
+            ctk.CTkLabel(header, image=logo_img, text="").pack(side="left", padx=(0, 10))
+
         ctk.CTkLabel(
-            self._right,
-            text="VoxMorph",  # titre principal, pas de modification
+            header,
+            text="VoxMorph",
             font=ctk.CTkFont(family="Segoe UI", size=26, weight="bold"),
             text_color="#cdd6f4",
-        ).pack(pady=(28, 4))
+        ).pack(side="left")
 
         ctk.CTkLabel(
             self._right,
