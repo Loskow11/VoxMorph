@@ -29,9 +29,9 @@ def run_in_thread(
     return t
 
 
-def post_to_main(callback: Callable, *args) -> None:
+def post_to_main(callback: Callable, *args, **kwargs) -> None:
     # dispatches a call to the main thread from any thread
     import tkinter as tk
     root = tk._default_root
     if root:
-        root.after(0, lambda: callback(*args))
+        root.after(0, lambda: callback(*args, **kwargs))
