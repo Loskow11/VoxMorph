@@ -39,7 +39,7 @@ def run_inference(
     image_path: str | Path,
     output_path: str | Path,
     export_format: str = "obj",
-    mc_resolution: int = 256,
+    mc_resolution: int = 128,
     on_progress=None,
 ) -> Path:
     # runs triposr on a preprocessed rgba image and exports the 3d mesh

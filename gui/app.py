@@ -251,7 +251,7 @@ class App(ctk.CTk):
             image_path=preprocessed_path,
             output_path=mesh_path,
             export_format="obj",
-            mc_resolution=256,
+            mc_resolution=128,
             on_progress=self._set_status,
         )
         self._mesh_path = str(mesh_path)
