@@ -3,13 +3,14 @@ from tkinter import filedialog
 from PIL import Image, ImageTk
 from pathlib import Path
 from gui.widgets.image_panel import ImagePanel
-from utils.thread_worker import run_in_thread
+from utils.thread_worker import run_in_thread, post_to_main
 
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
+TEMP_DIR = Path(__file__).parent.parent / "temp"
 
 
 class App(ctk.CTk):
@@ -19,6 +20,7 @@ class App(ctk.CTk):
         self.geometry("1260x660")
         self.resizable(False, False)
         self._image_path: str | None = None
+        self._processed_path: str | None = None
         self._set_window_icon()
         self._build_layout()
 
@@ -120,10 +122,10 @@ class App(ctk.CTk):
             text="Reconstruction 3D depuis une image 2D",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color="#6c7086",
-        ).pack(pady=(0, 32))
+        ).pack(pady=(0, 24))
 
         ctk.CTkFrame(self._right, height=1, fg_color="#313244").pack(
-            fill="x", padx=24, pady=(0, 28)
+            fill="x", padx=24, pady=(0, 24)
         )
 
         self._btn_run = ctk.CTkButton(
@@ -139,13 +141,24 @@ class App(ctk.CTk):
         )
         self._btn_run.pack(padx=24, fill="x")
 
+        # barre de progression indeterminee visible uniquement pendant le traitement
+        self._progress = ctk.CTkProgressBar(
+            self._right,
+            mode="indeterminate",
+            height=6,
+            progress_color="#89b4fa",
+            fg_color="#313244",
+        )
+        self._progress.pack(padx=24, pady=(10, 0), fill="x")
+        self._progress.set(0)
+
         self._status_label = ctk.CTkLabel(
             self._right,
             text="",
             text_color="#a6e3a1",
             font=ctk.CTkFont(family="Segoe UI", size=12),
         )
-        self._status_label.pack(pady=(12, 0))
+        self._status_label.pack(pady=(8, 0))
 
     def _select_image(self) -> None:
         path = filedialog.askopenfilename(
@@ -155,34 +168,60 @@ class App(ctk.CTk):
         if not path:
             return
         self._image_path = path
+        self._processed_path = None
         self._panel_original.load_image(path)
         self._panel_processed.clear()
         self._label_path.configure(text=Path(path).name)
         self._label_processed.configure(text="")
         self._btn_run.configure(state="normal")
         self._status_label.configure(text="")
+        self._progress.set(0)
+
+    def _set_status(self, text: str, color: str = "#f9e2af") -> None:
+        # mise a jour du label de statut depuis le thread principal ou secondaire
+        post_to_main(self._status_label.configure, text=text, text_color=color)
 
     def _on_run(self) -> None:
-        # desactive le bouton pendant le traitement pour eviter les doubles appels
+        # desactive le bouton et demarre la progression pendant le traitement
         self._btn_run.configure(state="disabled")
-        self._status_label.configure(text="Suppression du fond...", text_color="#f9e2af")
-        run_in_thread(self._run_pipeline, on_done=self._on_pipeline_done)
+        self._btn_select.configure(state="disabled")
+        self._progress.start()
+        self._status_label.configure(text="Initialisation...", text_color="#f9e2af")
+        run_in_thread(
+            self._run_pipeline,
+            on_done=self._on_pipeline_done,
+            on_error=self._on_pipeline_error,
+        )
 
     def _run_pipeline(self) -> None:
-        # importe ici pour ne pas bloquer le demarrage si le modele n'est pas encore charge
         from core.preprocessing import remove_background, normalize
-        import tempfile, os
 
+        self._set_status("Chargement du modele de segmentation...")
         result = remove_background(self._image_path)
+
+        self._set_status("Normalisation en cours (512x512)...")
         result = normalize(result, size=512)
 
-        # sauvegarde du resultat dans un fichier temporaire pour affichage
-        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-        result.save(tmp.name)
-        self._processed_path = tmp.name
+        out_path = TEMP_DIR / "preprocessed.png"
+        result.save(str(out_path))
+        self._processed_path = str(out_path)
 
     def _on_pipeline_done(self) -> None:
+        self._progress.stop()
+        self._progress.set(1)
         self._panel_processed.load_image(self._processed_path)
-        self._label_processed.configure(text="Fond supprime - 512x512")
-        self._status_label.configure(text="Preprocessing termine.", text_color="#a6e3a1")
+        self._label_processed.configure(text="Fond supprime — 512x512")
+        self._status_label.configure(
+            text="Preprocessing termine.", text_color="#a6e3a1"
+        )
         self._btn_run.configure(state="normal")
+        self._btn_select.configure(state="normal")
+
+    def _on_pipeline_error(self, exc: Exception) -> None:
+        self._progress.stop()
+        self._progress.set(0)
+        self._status_label.configure(
+            text=f"Erreur : {exc}", text_color="#f38ba8"
+        )
+        self._btn_run.configure(state="normal")
+        self._btn_select.configure(state="normal")
