@@ -22,7 +22,7 @@ def run_in_thread(
                 root.after(0, on_done)
         except Exception as exc:
             if on_error and root:
-                root.after(0, lambda: on_error(exc))
+                root.after(0, lambda e=exc: on_error(e))
 
     t = threading.Thread(target=wrapper, daemon=daemon)
     t.start()
