@@ -11,6 +11,7 @@ ctk.set_default_color_theme("blue")
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 TEMP_DIR = Path(__file__).parent.parent / "temp"
+OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
 
 class App(ctk.CTk):
@@ -21,6 +22,7 @@ class App(ctk.CTk):
         self.resizable(False, False)
         self._image_path: str | None = None
         self._processed_path: str | None = None
+        self._mesh_path: str | None = None
         self._set_window_icon()
         self._build_layout()
 
@@ -198,6 +200,7 @@ class App(ctk.CTk):
     def _reset(self) -> None:
         self._image_path = None
         self._processed_path = None
+        self._mesh_path = None
         self._panel_original.clear()
         self._panel_processed.clear()
         self._label_meta_original.configure(text="")
@@ -226,18 +229,32 @@ class App(ctk.CTk):
 
     def _run_pipeline(self) -> None:
         from core.preprocessing import remove_background, normalize
+        from core.inference import run_inference
 
+        stem = Path(self._image_path).stem
+
+        # step 1: background removal
         self._set_status("Loading segmentation model...")
         result = remove_background(self._image_path)
 
+        # step 2: normalization
         self._set_status("Normalizing image (512x512)...")
         result = normalize(result, size=512)
 
-        # save result using the original filename for traceability
-        stem = Path(self._image_path).stem
-        out_path = TEMP_DIR / f"{stem}_preprocessed.png"
-        result.save(str(out_path))
-        self._processed_path = str(out_path)
+        preprocessed_path = TEMP_DIR / f"{stem}_preprocessed.png"
+        result.save(str(preprocessed_path))
+        self._processed_path = str(preprocessed_path)
+
+        # step 3: 3d inference
+        mesh_path = OUTPUT_DIR / f"{stem}.obj"
+        run_inference(
+            image_path=preprocessed_path,
+            output_path=mesh_path,
+            export_format="obj",
+            mc_resolution=256,
+            on_progress=self._set_status,
+        )
+        self._mesh_path = str(mesh_path)
 
     def _on_pipeline_done(self) -> None:
         self._progress.stop()
@@ -249,7 +266,12 @@ class App(ctk.CTk):
         self._label_meta_processed.configure(
             text=f"512x512  •  RGBA  •  {size_kb} KB"
         )
-        self._status_label.configure(text="Preprocessing complete.", text_color="#a6e3a1")
+
+        mesh_kb = Path(self._mesh_path).stat().st_size // 1024
+        self._status_label.configure(
+            text=f"Mesh exported — {Path(self._mesh_path).name}  •  {mesh_kb} KB",
+            text_color="#a6e3a1",
+        )
         self._btn_run.configure(state="normal")
         self._btn_select.configure(state="normal")
         self._btn_reset.configure(state="normal")
