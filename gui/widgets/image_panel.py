@@ -15,7 +15,7 @@ class ImagePanel(ctk.CTkFrame):
 
         self._placeholder = ctk.CTkLabel(
             self,
-            text="aucune image selectionnee",
+            text="Aucune image selectionnee",
             text_color="#6c7086",
             font=ctk.CTkFont(family="Segoe UI", size=13),
         )

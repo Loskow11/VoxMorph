@@ -28,7 +28,7 @@ class App(ctk.CTk):
 
         self._btn_select = ctk.CTkButton(
             self._left,
-            text="selectionner une image",
+            text="Selectionner une image",
             command=self._select_image,
             fg_color="#313244",
             hover_color="#45475a",
@@ -51,14 +51,14 @@ class App(ctk.CTk):
 
         ctk.CTkLabel(
             self._right,
-            text="VoxMorph",
+            text="VoxMorph",  # titre principal, pas de modification
             font=ctk.CTkFont(family="Segoe UI", size=26, weight="bold"),
             text_color="#cdd6f4",
         ).pack(pady=(28, 4))
 
         ctk.CTkLabel(
             self._right,
-            text="reconstruction 3d depuis une image 2d",
+            text="Reconstruction 3D depuis une image 2D",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color="#6c7086",
         ).pack(pady=(0, 32))
@@ -70,7 +70,7 @@ class App(ctk.CTk):
 
         self._btn_run = ctk.CTkButton(
             self._right,
-            text="lancer reconstruction",
+            text="Lancer reconstruction",
             command=self._on_run,
             height=44,
             fg_color="#89b4fa",
@@ -91,7 +91,7 @@ class App(ctk.CTk):
 
     def _select_image(self) -> None:
         path = filedialog.askopenfilename(
-            title="choisir une image",
+            title="Choisir une image",
             filetypes=[("images", "*.png *.jpg *.jpeg *.webp *.bmp")],
         )
         if not path:
@@ -105,7 +105,7 @@ class App(ctk.CTk):
     def _on_run(self) -> None:
         # desactive le bouton pendant le traitement pour eviter les doubles appels
         self._btn_run.configure(state="disabled")
-        self._status_label.configure(text="traitement en cours...", text_color="#f9e2af")
+        self._status_label.configure(text="Traitement en cours...", text_color="#f9e2af")
         run_in_thread(self._run_pipeline, on_done=self._on_pipeline_done)
 
     def _run_pipeline(self) -> None:
@@ -113,5 +113,5 @@ class App(ctk.CTk):
         print("traitement lance")
 
     def _on_pipeline_done(self) -> None:
-        self._status_label.configure(text="termine.", text_color="#a6e3a1")
+        self._status_label.configure(text="Termine.", text_color="#a6e3a1")
         self._btn_run.configure(state="normal")
