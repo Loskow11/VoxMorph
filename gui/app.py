@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from tkinter import filedialog
-from PIL import Image, ImageTk
+from PIL import Image
 from pathlib import Path
 from gui.widgets.image_panel import ImagePanel
 from utils.thread_worker import run_in_thread
@@ -23,12 +23,10 @@ class App(ctk.CTk):
         self._build_layout()
 
     def _set_window_icon(self) -> None:
-        # definit l'icone de la barre de titre et de la taskbar
-        icon_path = ASSETS_DIR / "logo.png"
-        if icon_path.exists():
-            img = Image.open(icon_path).resize((32, 32), Image.LANCZOS)
-            self._icon_photo = ImageTk.PhotoImage(img)
-            self.iconphoto(True, self._icon_photo)
+        # iconbitmap requiert un .ico sur windows pour s'afficher correctement dans la barre de titre
+        ico_path = ASSETS_DIR / "logo.ico"
+        if ico_path.exists():
+            self.iconbitmap(str(ico_path))
 
     def _build_layout(self) -> None:
         # colonne gauche : panneau image
