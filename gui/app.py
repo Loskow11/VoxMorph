@@ -1,6 +1,7 @@
+import ctypes
 import customtkinter as ctk
 from tkinter import filedialog
-from PIL import Image
+from PIL import Image, ImageTk
 from pathlib import Path
 from gui.widgets.image_panel import ImagePanel
 from utils.thread_worker import run_in_thread
@@ -10,6 +11,12 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
+
+# force windows a associer l'icone au process plutot qu'a l'interpreteur python
+try:
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("voxmorph.app")
+except Exception:
+    pass
 
 
 class App(ctk.CTk):
@@ -23,10 +30,15 @@ class App(ctk.CTk):
         self._build_layout()
 
     def _set_window_icon(self) -> None:
-        # iconbitmap requiert un .ico sur windows pour s'afficher correctement dans la barre de titre
+        # iconbitmap pour la barre de titre, iconphoto pour la taskbar windows
         ico_path = ASSETS_DIR / "logo.ico"
+        png_path = ASSETS_DIR / "logo.png"
         if ico_path.exists():
             self.iconbitmap(str(ico_path))
+        if png_path.exists():
+            img = Image.open(png_path).resize((64, 64), Image.LANCZOS)
+            self._taskbar_icon = ImageTk.PhotoImage(img)
+            self.iconphoto(True, self._taskbar_icon)
 
     def _build_layout(self) -> None:
         # colonne gauche : panneau image
