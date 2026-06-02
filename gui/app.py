@@ -12,12 +12,11 @@ ctk.set_default_color_theme("blue")
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
 
-
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("VoxMorph")
-        self.geometry("900x620")
+        self.geometry("1260x660")
         self.resizable(False, False)
         self._image_path: str | None = None
         self._set_window_icon()
@@ -35,13 +34,20 @@ class App(ctk.CTk):
             self.iconphoto(True, self._taskbar_icon)
 
     def _build_layout(self) -> None:
-        # colonne gauche : panneau image
-        self._left = ctk.CTkFrame(self, width=440, fg_color="#181825")
-        self._left.pack(side="left", fill="y", padx=(16, 8), pady=16)
+        # colonne gauche : image originale
+        self._left = ctk.CTkFrame(self, width=420, fg_color="#181825")
+        self._left.pack(side="left", fill="y", padx=(16, 6), pady=16)
         self._left.pack_propagate(False)
 
-        self._panel = ImagePanel(self._left, width=400, height=400)
-        self._panel.pack(padx=20, pady=(20, 12))
+        ctk.CTkLabel(
+            self._left,
+            text="Image originale",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color="#6c7086",
+        ).pack(pady=(14, 4))
+
+        self._panel_original = ImagePanel(self._left, width=380, height=400)
+        self._panel_original.pack(padx=20, pady=(0, 10))
 
         self._btn_select = ctk.CTkButton(
             self._left,
@@ -58,15 +64,38 @@ class App(ctk.CTk):
             text="",
             text_color="#6c7086",
             font=ctk.CTkFont(family="Segoe UI", size=11),
-            wraplength=380,
+            wraplength=360,
         )
         self._label_path.pack(padx=20)
 
-        # colonne droite : parametres et lancement
-        self._right = ctk.CTkFrame(self, fg_color="#181825")
-        self._right.pack(side="right", fill="both", expand=True, padx=(8, 16), pady=16)
+        # colonne centrale : resultat apres suppression de fond
+        self._mid = ctk.CTkFrame(self, width=420, fg_color="#181825")
+        self._mid.pack(side="left", fill="y", padx=6, pady=16)
+        self._mid.pack_propagate(False)
 
-        # header : logo + titre sur la meme ligne
+        ctk.CTkLabel(
+            self._mid,
+            text="Apres suppression du fond",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color="#6c7086",
+        ).pack(pady=(14, 4))
+
+        self._panel_processed = ImagePanel(self._mid, width=380, height=400)
+        self._panel_processed.pack(padx=20, pady=(0, 10))
+
+        self._label_processed = ctk.CTkLabel(
+            self._mid,
+            text="",
+            text_color="#6c7086",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+        )
+        self._label_processed.pack(padx=20)
+
+        # colonne droite : titre et actions
+        self._right = ctk.CTkFrame(self, fg_color="#181825")
+        self._right.pack(side="right", fill="both", expand=True, padx=(6, 16), pady=16)
+
+        # header : logo + titre
         header = ctk.CTkFrame(self._right, fg_color="transparent")
         header.pack(pady=(28, 4))
 
@@ -93,7 +122,6 @@ class App(ctk.CTk):
             text_color="#6c7086",
         ).pack(pady=(0, 32))
 
-        # separateur visuel
         ctk.CTkFrame(self._right, height=1, fg_color="#313244").pack(
             fill="x", padx=24, pady=(0, 28)
         )
@@ -127,21 +155,34 @@ class App(ctk.CTk):
         if not path:
             return
         self._image_path = path
-        self._panel.load_image(path)
-        self._label_path.configure(text=path.split("/")[-1])
+        self._panel_original.load_image(path)
+        self._panel_processed.clear()
+        self._label_path.configure(text=Path(path).name)
+        self._label_processed.configure(text="")
         self._btn_run.configure(state="normal")
         self._status_label.configure(text="")
 
     def _on_run(self) -> None:
         # desactive le bouton pendant le traitement pour eviter les doubles appels
         self._btn_run.configure(state="disabled")
-        self._status_label.configure(text="Traitement en cours...", text_color="#f9e2af")
+        self._status_label.configure(text="Suppression du fond...", text_color="#f9e2af")
         run_in_thread(self._run_pipeline, on_done=self._on_pipeline_done)
 
     def _run_pipeline(self) -> None:
-        # point d'entree du pipeline — remplace par l'inference reelle en phase 3
-        print("traitement lance")
+        # importe ici pour ne pas bloquer le demarrage si le modele n'est pas encore charge
+        from core.preprocessing import remove_background, normalize
+        import tempfile, os
+
+        result = remove_background(self._image_path)
+        result = normalize(result, size=512)
+
+        # sauvegarde du resultat dans un fichier temporaire pour affichage
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        result.save(tmp.name)
+        self._processed_path = tmp.name
 
     def _on_pipeline_done(self) -> None:
-        self._status_label.configure(text="Termine.", text_color="#a6e3a1")
+        self._panel_processed.load_image(self._processed_path)
+        self._label_processed.configure(text="Fond supprime - 512x512")
+        self._status_label.configure(text="Preprocessing termine.", text_color="#a6e3a1")
         self._btn_run.configure(state="normal")
