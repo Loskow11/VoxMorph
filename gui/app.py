@@ -154,16 +154,24 @@ class App(ctk.CTk):
         )
         self._btn_run.pack(padx=24, fill="x")
 
-        # indeterminate progress bar, visible only during processing
+        # determinate progress bar with percentage label
         self._progress = ctk.CTkProgressBar(
             self._right,
-            mode="indeterminate",
+            mode="determinate",
             height=6,
             progress_color="#89b4fa",
             fg_color="#313244",
         )
         self._progress.pack(padx=24, pady=(10, 0), fill="x")
         self._progress.set(0)
+
+        self._progress_label = ctk.CTkLabel(
+            self._right,
+            text="",
+            text_color="#585b70",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+        )
+        self._progress_label.pack(pady=(2, 0))
 
         self._status_label = ctk.CTkLabel(
             self._right,
@@ -214,13 +222,28 @@ class App(ctk.CTk):
         # updates the status label from any thread
         post_to_main(self._status_label.configure, text=text, text_color=color)
 
+    def _set_progress(self, value: float, label: str = "") -> None:
+        # updates progress bar and percentage label from any thread (value: 0.0 to 1.0)
+        post_to_main(self._progress.set, value)
+        post_to_main(
+            self._progress_label.configure,
+            text=f"{int(value * 100)}%  —  {label}" if label else f"{int(value * 100)}%",
+        )
+
+    def _show_preprocessed(self, path: str) -> None:
+        # called from main thread to update the center panel immediately after preprocessing
+        self._panel_processed.load_image(path)
+        size_kb = Path(path).stat().st_size // 1024
+        self._label_meta_processed.configure(text=f"512x512  •  RGBA  •  {size_kb} KB")
+
     def _on_run(self) -> None:
-        # disables controls and starts the progress bar during processing
+        # disables controls during processing
         self._btn_run.configure(state="disabled")
         self._btn_select.configure(state="disabled")
         self._btn_reset.configure(state="disabled")
-        self._progress.start()
-        self._status_label.configure(text="Initializing...", text_color="#f9e2af")
+        self._progress.set(0)
+        self._progress_label.configure(text="")
+        self._status_label.configure(text="Starting...", text_color="#f9e2af")
         run_in_thread(
             self._run_pipeline,
             on_done=self._on_pipeline_done,
@@ -233,39 +256,52 @@ class App(ctk.CTk):
 
         stem = Path(self._image_path).stem
 
-        # step 1: background removal
-        self._set_status("Loading segmentation model...")
+        # step 1/3: background removal
+        self._set_status("Step 1/3 — Removing background...")
+        self._set_progress(0.05, "loading segmentation model")
         result = remove_background(self._image_path)
 
-        # step 2: normalization
-        self._set_status("Normalizing image (512x512)...")
+        # step 2/3: normalization
+        self._set_status("Step 2/3 — Normalizing image...")
+        self._set_progress(0.25, "resizing to 512x512")
         result = normalize(result, size=512)
 
         preprocessed_path = TEMP_DIR / f"{stem}_preprocessed.png"
         result.save(str(preprocessed_path))
         self._processed_path = str(preprocessed_path)
 
-        # step 3: 3d inference
+        # show preview immediately after preprocessing, before inference
+        post_to_main(self._show_preprocessed, str(preprocessed_path))
+
+        # step 3/3: 3d inference
+        self._set_status("Step 3/3 — Loading 3D model weights...")
+        self._set_progress(0.35, "downloading triposr weights (first run only)")
+
+        def _inference_progress(msg: str) -> None:
+            # maps inference sub-steps to progress range 0.40 -> 0.95
+            steps = {
+                "Preparing": 0.40,
+                "Running":   0.55,
+                "Extracting": 0.80,
+                "Exporting": 0.92,
+            }
+            ratio = next((v for k, v in steps.items() if k in msg), None)
+            if ratio:
+                self._set_progress(ratio, msg.lower())
+            self._set_status(f"Step 3/3 — {msg}")
+
         mesh_path = OUTPUT_DIR / f"{stem}.obj"
         run_inference(
             image_path=preprocessed_path,
             output_path=mesh_path,
             export_format="obj",
             mc_resolution=128,
-            on_progress=self._set_status,
+            on_progress=_inference_progress,
         )
         self._mesh_path = str(mesh_path)
 
     def _on_pipeline_done(self) -> None:
-        self._progress.stop()
-        self._progress.set(1)
-
-        # display processed image with its metadata
-        self._panel_processed.load_image(self._processed_path)
-        size_kb = Path(self._processed_path).stat().st_size // 1024
-        self._label_meta_processed.configure(
-            text=f"512x512  •  RGBA  •  {size_kb} KB"
-        )
+        self._set_progress(1.0, "done")
 
         mesh_kb = Path(self._mesh_path).stat().st_size // 1024
         self._status_label.configure(
@@ -277,9 +313,12 @@ class App(ctk.CTk):
         self._btn_reset.configure(state="normal")
 
     def _on_pipeline_error(self, exc: Exception) -> None:
-        self._progress.stop()
         self._progress.set(0)
+        self._progress_label.configure(text="")
         self._status_label.configure(text=f"Error: {exc}", text_color="#f38ba8")
+        self._btn_run.configure(state="normal")
+        self._btn_select.configure(state="normal")
+        self._btn_reset.configure(state="normal")
         self._btn_run.configure(state="normal")
         self._btn_select.configure(state="normal")
         self._btn_reset.configure(state="normal")
