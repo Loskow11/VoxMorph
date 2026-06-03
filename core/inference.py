@@ -1,7 +1,13 @@
+import sys
 from pathlib import Path
 from PIL import Image
 import torch
-import numpy as np
+
+
+# add vendor/TripoSR to path so tsr can be imported without pip install
+_vendor_path = Path(__file__).parent.parent / "vendor" / "TripoSR"
+if str(_vendor_path) not in sys.path:
+    sys.path.insert(0, str(_vendor_path))
 
 
 # model instance kept in memory after first load

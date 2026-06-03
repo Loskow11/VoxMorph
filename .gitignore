@@ -17,3 +17,4 @@ temp/*.jpg
 output/*.obj
 output/*.glb
 output/*.ply
+vendor/
