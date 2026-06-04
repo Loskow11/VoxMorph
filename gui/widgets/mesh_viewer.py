@@ -2,10 +2,14 @@ import numpy as np
 import trimesh
 import customtkinter as ctk
 from PIL import Image
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 
 class MeshViewer(ctk.CTkFrame):
-    # offscreen mesh viewer with drag-to-rotate and scroll-to-zoom
+    # offscreen mesh viewer using matplotlib, with drag-to-rotate and scroll-to-zoom
     def __init__(self, master, width=480, height=480, **kwargs):
         super().__init__(master, width=width, height=height, **kwargs)
         self.render_width = width
@@ -31,14 +35,16 @@ class MeshViewer(ctk.CTkFrame):
         self._canvas_label = ctk.CTkLabel(self, text="")
         self._canvas_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        # bind mouse events for rotation and zoom
         self._canvas_label.bind("<ButtonPress-1>", self._on_drag_start)
         self._canvas_label.bind("<B1-Motion>", self._on_drag)
         self._canvas_label.bind("<MouseWheel>", self._on_scroll)
 
     def load_mesh(self, path: str) -> None:
         # loads an obj/glb/ply mesh and triggers the first render
-        self._mesh = trimesh.load(path, force="mesh")
+        raw = trimesh.load(path, force="mesh")
+        if isinstance(raw, trimesh.Scene):
+            raw = trimesh.util.concatenate(list(raw.geometry.values()))
+        self._mesh = raw
         self._normalize_mesh()
         self._placeholder.place_forget()
         self._render()
@@ -51,63 +57,72 @@ class MeshViewer(ctk.CTkFrame):
             self._mesh.vertices /= scale
 
     def _render(self) -> None:
-        try:
-            import pyrender
-            import os
-            os.environ.setdefault("PYOPENGL_PLATFORM", "")
-        except ImportError:
-            self._render_fallback()
+        if self._mesh is None:
             return
 
-        try:
-            mesh_pr = pyrender.Mesh.from_trimesh(self._mesh, smooth=False)
-            scene = pyrender.Scene(ambient_light=[0.3, 0.3, 0.3])
-            scene.add(mesh_pr)
+        verts = self._mesh.vertices
+        faces = self._mesh.faces
 
-            # compute camera position from spherical coordinates
-            az = np.radians(self._azimuth)
-            el = np.radians(self._elevation)
-            cx = self._distance * np.cos(el) * np.sin(az)
-            cy = self._distance * np.sin(el)
-            cz = self._distance * np.cos(el) * np.cos(az)
-            camera_pose = _look_at(np.array([cx, cy, cz]), np.zeros(3))
+        dpi = 96
+        fig_w = self.render_width / dpi
+        fig_h = self.render_height / dpi
 
-            camera = pyrender.PerspectiveCamera(yfov=np.pi / 3.0)
-            scene.add(camera, pose=camera_pose)
+        fig = plt.figure(figsize=(fig_w, fig_h), dpi=dpi, facecolor="#1e1e2e")
+        ax = fig.add_subplot(111, projection="3d", facecolor="#1e1e2e")
 
-            # directional light from camera position
-            light = pyrender.DirectionalLight(color=[1.0, 1.0, 1.0], intensity=3.0)
-            scene.add(light, pose=camera_pose)
+        # build face polygons for rendering
+        tris = verts[faces]
 
-            renderer = pyrender.OffscreenRenderer(self.render_width, self.render_height)
-            color, _ = renderer.render(scene)
-            renderer.delete()
+        # compute per-face normals for basic shading
+        v0 = tris[:, 0]
+        v1 = tris[:, 1]
+        v2 = tris[:, 2]
+        normals = np.cross(v1 - v0, v2 - v0)
+        norms = np.linalg.norm(normals, axis=1, keepdims=True)
+        norms = np.where(norms == 0, 1, norms)
+        normals /= norms
 
-            img = Image.fromarray(color)
-            self._update_display(img)
-        except Exception:
-            self._render_fallback()
+        # light direction from camera-ish angle
+        light = np.array([0.5, 0.8, 0.6])
+        light /= np.linalg.norm(light)
+        intensity = np.clip(normals @ light, 0.15, 1.0)
 
-    def _render_fallback(self) -> None:
-        # software fallback using trimesh's built-in scene renderer
-        try:
-            scene = self._mesh.scene()
-            az = np.radians(self._azimuth)
-            el = np.radians(self._elevation)
-            cx = self._distance * np.cos(el) * np.sin(az)
-            cy = self._distance * np.sin(el)
-            cz = self._distance * np.cos(el) * np.cos(az)
-            scene.set_camera(angles=(el, 0, az), distance=self._distance)
-            png = scene.save_image(
-                resolution=(self.render_width, self.render_height), visible=False
-            )
-            img = Image.open(__import__("io").BytesIO(png))
-            self._update_display(img)
-        except Exception as e:
-            print(f"render error: {e}")
+        # map intensity to blue-ish color palette
+        base = np.array([0.34, 0.71, 0.98])
+        colors = intensity[:, None] * base
+        colors = np.clip(colors, 0, 1)
+        face_colors = np.hstack([colors, np.full((len(colors), 1), 0.92)])
 
-    def _update_display(self, img: Image.Image) -> None:
-        ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=img.size)
+        poly = Poly3DCollection(tris, zsort="average")
+        poly.set_facecolor(face_colors)
+        poly.set_edgecolor("none")
+        ax.add_collection3d(poly)
+
+        # fit axes to mesh bounds
+        lim = 1.1
+        ax.set_xlim(-lim, lim)
+        ax.set_ylim(-lim, lim)
+        ax.set_zlim(-lim, lim)
+        ax.set_axis_off()
+
+        ax.view_init(elev=self._elevation, azim=self._azimuth)
+        ax.dist = self._distance + 7
+
+        fig.tight_layout(pad=0)
+
+        # render to PIL image
+        from io import BytesIO
+        buf = BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight",
+                    facecolor="#1e1e2e", edgecolor="none")
+        plt.close(fig)
+        buf.seek(0)
+        img = Image.open(buf).copy()
+
+        ctk_img = ctk.CTkImage(
+            light_image=img, dark_image=img,
+            size=(self.render_width, self.render_height),
+        )
         self._photo = ctk_img
         self._canvas_label.configure(image=ctk_img)
 
@@ -119,15 +134,15 @@ class MeshViewer(ctk.CTkFrame):
             return
         dx = event.x - self._drag_start[0]
         dy = event.y - self._drag_start[1]
-        self._azimuth += dx * 0.5
-        self._elevation = np.clip(self._elevation - dy * 0.5, -89, 89)
+        self._azimuth += dx * 0.6
+        self._elevation = float(np.clip(self._elevation - dy * 0.6, -89, 89))
         self._drag_start = (event.x, event.y)
         self._render()
 
     def _on_scroll(self, event) -> None:
         if self._mesh is None:
             return
-        self._distance = np.clip(self._distance - event.delta * 0.001, 1.0, 6.0)
+        self._distance = float(np.clip(self._distance - event.delta * 0.002, 0.5, 4.0))
         self._render()
 
     def clear(self) -> None:
@@ -135,22 +150,3 @@ class MeshViewer(ctk.CTkFrame):
         self._canvas_label.configure(image=None)
         self._photo = None
         self._placeholder.place(relx=0.5, rely=0.5, anchor="center")
-
-
-def _look_at(eye: np.ndarray, target: np.ndarray) -> np.ndarray:
-    # builds a 4x4 camera pose matrix looking from eye toward target
-    up = np.array([0.0, 1.0, 0.0])
-    forward = target - eye
-    forward /= np.linalg.norm(forward)
-    right = np.cross(forward, up)
-    if np.linalg.norm(right) < 1e-6:
-        up = np.array([0.0, 0.0, 1.0])
-        right = np.cross(forward, up)
-    right /= np.linalg.norm(right)
-    up = np.cross(right, forward)
-    pose = np.eye(4)
-    pose[:3, 0] = right
-    pose[:3, 1] = up
-    pose[:3, 2] = -forward
-    pose[:3, 3] = eye
-    return pose
