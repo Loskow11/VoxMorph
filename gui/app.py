@@ -193,6 +193,52 @@ class App(ctk.CTk):
 
         ctk.CTkFrame(sb, height=1, fg_color="#313244").pack(fill="x", padx=12, pady=(14, 10))
 
+        # settings section
+        ctk.CTkLabel(
+            sb, text="Settings",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color="#cdd6f4",
+        ).pack(padx=12, anchor="w")
+
+        ctk.CTkLabel(
+            sb, text="Mesh resolution",
+            font=ctk.CTkFont(family="Segoe UI", size=10), text_color="#6c7086",
+        ).pack(padx=12, pady=(6, 2), anchor="w")
+
+        self._resolution_var = ctk.StringVar(value="128")
+        self._resolution_seg = ctk.CTkSegmentedButton(
+            sb,
+            values=["64", "128", "256"],
+            variable=self._resolution_var,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            selected_color="#89b4fa",
+            selected_hover_color="#74c7ec",
+            unselected_color="#313244",
+            unselected_hover_color="#45475a",
+            text_color="#1e1e2e",
+            text_color_disabled="#6c7086",
+        )
+        self._resolution_seg.pack(padx=12, pady=(0, 6), fill="x")
+
+        ctk.CTkLabel(
+            sb, text="64 = fast  •  256 = detailed",
+            font=ctk.CTkFont(family="Segoe UI", size=9), text_color="#585b70",
+        ).pack(padx=12, anchor="w")
+
+        self._remove_bg_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(
+            sb,
+            text="Remove background",
+            variable=self._remove_bg_var,
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color="#cdd6f4",
+            checkbox_width=16, checkbox_height=16,
+            checkmark_color="#1e1e2e",
+            fg_color="#89b4fa", hover_color="#74c7ec",
+        ).pack(padx=12, pady=(10, 0), anchor="w")
+
+        ctk.CTkFrame(sb, height=1, fg_color="#313244").pack(fill="x", padx=12, pady=(12, 10))
+
         # export section
         ctk.CTkLabel(
             sb, text="Export mesh",
@@ -314,12 +360,21 @@ class App(ctk.CTk):
     def _run_pipeline(self) -> None:
         from core.preprocessing import remove_background, normalize
         from core.inference import run_inference
+        from PIL import Image as PilImage
 
         stem = Path(self._image_path).stem
+        mc_res = int(self._resolution_var.get())
+        do_remove_bg = self._remove_bg_var.get()
 
-        self._set_status("Step 1/3 — Removing background...")
-        self._set_progress(0.05, "loading segmentation model")
-        result = remove_background(self._image_path)
+        if do_remove_bg:
+            self._set_status("Step 1/3 — Removing background...")
+            self._set_progress(0.05, "loading segmentation model")
+            result = remove_background(self._image_path)
+        else:
+            # skip background removal, load image directly as rgba
+            self._set_status("Step 1/3 — Skipping background removal...")
+            self._set_progress(0.10, "background removal disabled")
+            result = PilImage.open(self._image_path).convert("RGBA")
 
         self._set_status("Step 2/3 — Normalizing image...")
         self._set_progress(0.25, "resizing to 512x512")
@@ -350,7 +405,7 @@ class App(ctk.CTk):
             image_path=preprocessed_path,
             output_path=mesh_path,
             export_format="obj",
-            mc_resolution=128,
+            mc_resolution=mc_res,
             on_progress=_inference_progress,
         )
         self._mesh_path = str(mesh_path)
