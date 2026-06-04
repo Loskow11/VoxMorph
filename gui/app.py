@@ -15,18 +15,38 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 TEMP_DIR = Path(__file__).parent.parent / "temp"
 OUTPUT_DIR = Path(__file__).parent.parent / "output"
 
+# ui scaling constants relative to screen size
+_SIDEBAR_W = 240
+_MIN_PREVIEW = 300
+_MAX_PREVIEW = 520
+
 
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("VoxMorph")
-        self.geometry("1600x700")
-        self.resizable(False, False)
         self._image_path: str | None = None
         self._processed_path: str | None = None
         self._mesh_path: str | None = None
         self._set_window_icon()
+        self._compute_geometry()
         self._build_layout()
+
+    def _compute_geometry(self) -> None:
+        # fits the window to 90% of the screen, respecting min/max bounds
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        w = min(int(sw * 0.90), 1400)
+        h = min(int(sh * 0.88), 820)
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
+        self.resizable(True, True)
+        self.minsize(800, 560)
+        # preview size scales with window width
+        self._preview_size = min(
+            max(_MIN_PREVIEW, int((w - _SIDEBAR_W) * 0.70)), _MAX_PREVIEW
+        )
 
     def _set_window_icon(self) -> None:
         # iconbitmap for the title bar, iconphoto for the windows taskbar
@@ -40,168 +60,171 @@ class App(ctk.CTk):
             self.iconphoto(True, self._taskbar_icon)
 
     def _build_layout(self) -> None:
-        # left column: original image
-        self._left = ctk.CTkFrame(self, width=360, fg_color="#181825")
-        self._left.pack(side="left", fill="y", padx=(14, 5), pady=14)
-        self._left.pack_propagate(False)
+        ps = self._preview_size
 
-        ctk.CTkLabel(
-            self._left, text="Original image",
-            font=ctk.CTkFont(family="Segoe UI", size=12), text_color="#6c7086",
-        ).pack(pady=(12, 4))
+        # sidebar (right): controls fixed width
+        self._sidebar = ctk.CTkFrame(self, width=_SIDEBAR_W, fg_color="#181825")
+        self._sidebar.pack(side="right", fill="y", padx=(6, 12), pady=12)
+        self._sidebar.pack_propagate(False)
+        self._build_sidebar()
 
-        self._panel_original = ImagePanel(self._left, width=320, height=340)
-        self._panel_original.pack(padx=20, pady=(0, 8))
+        # main area (left): tabview fills remaining space
+        self._main = ctk.CTkFrame(self, fg_color="#181825")
+        self._main.pack(side="left", fill="both", expand=True, padx=(12, 6), pady=12)
 
+        self._tabs = ctk.CTkTabview(
+            self._main,
+            fg_color="#1e1e2e",
+            segmented_button_fg_color="#313244",
+            segmented_button_selected_color="#89b4fa",
+            segmented_button_selected_hover_color="#74c7ec",
+            segmented_button_unselected_color="#313244",
+            segmented_button_unselected_hover_color="#45475a",
+            text_color="#cdd6f4",
+        )
+        self._tabs.pack(fill="both", expand=True)
+
+        # tab 1: original image
+        self._tabs.add("Original")
+        tab_orig = self._tabs.tab("Original")
+        self._panel_original = ImagePanel(tab_orig, width=ps, height=ps)
+        self._panel_original.pack(padx=20, pady=(16, 8))
         self._label_meta_original = ctk.CTkLabel(
-            self._left, text="", text_color="#6c7086",
-            font=ctk.CTkFont(family="Segoe UI", size=11), wraplength=320,
-        )
-        self._label_meta_original.pack(padx=20, pady=(0, 8))
-
-        self._btn_select = ctk.CTkButton(
-            self._left, text="Select an image", command=self._select_image,
-            fg_color="#313244", hover_color="#45475a",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-        )
-        self._btn_select.pack(pady=(0, 6), padx=20, fill="x")
-
-        self._btn_reset = ctk.CTkButton(
-            self._left, text="Reset", command=self._reset,
-            fg_color="#313244", hover_color="#45475a",
-            font=ctk.CTkFont(family="Segoe UI", size=13), state="disabled",
-        )
-        self._btn_reset.pack(padx=20, fill="x")
-
-        # center-left column: background removed
-        self._mid_left = ctk.CTkFrame(self, width=360, fg_color="#181825")
-        self._mid_left.pack(side="left", fill="y", padx=5, pady=14)
-        self._mid_left.pack_propagate(False)
-
-        ctk.CTkLabel(
-            self._mid_left, text="Background removed",
-            font=ctk.CTkFont(family="Segoe UI", size=12), text_color="#6c7086",
-        ).pack(pady=(12, 4))
-
-        self._panel_processed = ImagePanel(self._mid_left, width=320, height=340)
-        self._panel_processed.pack(padx=20, pady=(0, 8))
-
-        self._label_meta_processed = ctk.CTkLabel(
-            self._mid_left, text="", text_color="#6c7086",
+            tab_orig, text="", text_color="#6c7086",
             font=ctk.CTkFont(family="Segoe UI", size=11),
         )
-        self._label_meta_processed.pack(padx=20)
+        self._label_meta_original.pack()
 
-        # center-right column: 3d mesh viewer
-        self._mid_right = ctk.CTkFrame(self, width=480, fg_color="#181825")
-        self._mid_right.pack(side="left", fill="y", padx=5, pady=14)
-        self._mid_right.pack_propagate(False)
+        # tab 2: background removed
+        self._tabs.add("Preprocessed")
+        tab_proc = self._tabs.tab("Preprocessed")
+        self._panel_processed = ImagePanel(tab_proc, width=ps, height=ps)
+        self._panel_processed.pack(padx=20, pady=(16, 8))
+        self._label_meta_processed = ctk.CTkLabel(
+            tab_proc, text="", text_color="#6c7086",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+        )
+        self._label_meta_processed.pack()
 
-        ctk.CTkLabel(
-            self._mid_right, text="3D mesh viewer",
-            font=ctk.CTkFont(family="Segoe UI", size=12), text_color="#6c7086",
-        ).pack(pady=(12, 4))
-
-        self._mesh_viewer = MeshViewer(self._mid_right, width=440, height=440)
-        self._mesh_viewer.pack(padx=20, pady=(0, 6))
-
+        # tab 3: 3d viewer
+        self._tabs.add("3D Viewer")
+        tab_3d = self._tabs.tab("3D Viewer")
+        self._mesh_viewer = MeshViewer(tab_3d, width=ps, height=ps)
+        self._mesh_viewer.pack(padx=20, pady=(16, 4))
         self._label_mesh_hint = ctk.CTkLabel(
-            self._mid_right, text="",
+            tab_3d, text="",
             text_color="#6c7086", font=ctk.CTkFont(family="Segoe UI", size=11),
         )
         self._label_mesh_hint.pack()
 
-        # right column: controls and export
-        self._right = ctk.CTkFrame(self, fg_color="#181825")
-        self._right.pack(side="right", fill="both", expand=True, padx=(5, 14), pady=14)
+    def _build_sidebar(self) -> None:
+        sb = self._sidebar
 
-        # header: logo + title
-        header = ctk.CTkFrame(self._right, fg_color="transparent")
-        header.pack(pady=(20, 4))
-
+        # header
+        header = ctk.CTkFrame(sb, fg_color="transparent")
+        header.pack(pady=(16, 4), padx=12)
         logo_path = ASSETS_DIR / "logo.png"
         if logo_path.exists():
             logo_img = ctk.CTkImage(
                 light_image=Image.open(logo_path),
                 dark_image=Image.open(logo_path),
-                size=(34, 34),
+                size=(28, 28),
             )
-            ctk.CTkLabel(header, image=logo_img, text="").pack(side="left", padx=(0, 8))
-
+            ctk.CTkLabel(header, image=logo_img, text="").pack(side="left", padx=(0, 6))
         ctk.CTkLabel(
             header, text="VoxMorph",
-            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
             text_color="#cdd6f4",
         ).pack(side="left")
 
         ctk.CTkLabel(
-            self._right, text="3D reconstruction from a 2D image",
-            font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#6c7086",
-        ).pack(pady=(0, 16))
+            sb, text="2D → 3D reconstruction",
+            font=ctk.CTkFont(family="Segoe UI", size=10), text_color="#6c7086",
+        ).pack(pady=(0, 12))
 
-        ctk.CTkFrame(self._right, height=1, fg_color="#313244").pack(
-            fill="x", padx=20, pady=(0, 16)
+        ctk.CTkFrame(sb, height=1, fg_color="#313244").pack(fill="x", padx=12, pady=(0, 12))
+
+        # image selection
+        self._btn_select = ctk.CTkButton(
+            sb, text="Select image", command=self._select_image,
+            fg_color="#313244", hover_color="#45475a",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
         )
+        self._btn_select.pack(padx=12, pady=(0, 6), fill="x")
 
+        self._btn_reset = ctk.CTkButton(
+            sb, text="Reset", command=self._reset,
+            fg_color="#313244", hover_color="#45475a",
+            font=ctk.CTkFont(family="Segoe UI", size=12), state="disabled",
+        )
+        self._btn_reset.pack(padx=12, pady=(0, 12), fill="x")
+
+        ctk.CTkFrame(sb, height=1, fg_color="#313244").pack(fill="x", padx=12, pady=(0, 12))
+
+        # launch button
         self._btn_run = ctk.CTkButton(
-            self._right, text="Start reconstruction", command=self._on_run,
-            height=42, fg_color="#89b4fa", hover_color="#74c7ec",
+            sb, text="Start reconstruction", command=self._on_run,
+            height=38, fg_color="#89b4fa", hover_color="#74c7ec",
             text_color="#1e1e2e",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             state="disabled",
         )
-        self._btn_run.pack(padx=20, fill="x")
+        self._btn_run.pack(padx=12, fill="x")
 
+        # progress
         self._progress = ctk.CTkProgressBar(
-            self._right, mode="determinate", height=5,
+            sb, mode="determinate", height=5,
             progress_color="#89b4fa", fg_color="#313244",
         )
-        self._progress.pack(padx=20, pady=(8, 0), fill="x")
+        self._progress.pack(padx=12, pady=(8, 0), fill="x")
         self._progress.set(0)
 
         self._progress_label = ctk.CTkLabel(
-            self._right, text="", text_color="#585b70",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
+            sb, text="", text_color="#585b70",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
         )
         self._progress_label.pack(pady=(2, 0))
 
         self._status_label = ctk.CTkLabel(
-            self._right, text="", text_color="#a6e3a1",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
+            sb, text="", text_color="#a6e3a1",
+            font=ctk.CTkFont(family="Segoe UI", size=11), wraplength=210,
         )
-        self._status_label.pack(pady=(6, 0))
+        self._status_label.pack(pady=(6, 0), padx=8)
+
+        ctk.CTkFrame(sb, height=1, fg_color="#313244").pack(fill="x", padx=12, pady=(14, 10))
 
         # export section
-        ctk.CTkFrame(self._right, height=1, fg_color="#313244").pack(
-            fill="x", padx=20, pady=(16, 12)
-        )
-
         ctk.CTkLabel(
-            self._right, text="Export mesh",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            sb, text="Export mesh",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
             text_color="#cdd6f4",
-        ).pack(padx=20, anchor="w")
+        ).pack(padx=12, anchor="w")
 
-        export_row = ctk.CTkFrame(self._right, fg_color="transparent")
-        export_row.pack(padx=20, pady=(8, 0), fill="x")
+        export_row = ctk.CTkFrame(sb, fg_color="transparent")
+        export_row.pack(padx=12, pady=(6, 6), fill="x")
 
-        for fmt in ["OBJ", "GLB", "PLY"]:
-            ctk.CTkButton(
-                export_row, text=f".{fmt.lower()}",
-                command=lambda f=fmt: self._export(f.lower()),
+        self._export_btns = {}
+        for fmt in ["obj", "glb", "ply"]:
+            btn = ctk.CTkButton(
+                export_row, text=f".{fmt}",
+                command=lambda f=fmt: self._export(f),
                 fg_color="#313244", hover_color="#45475a",
-                font=ctk.CTkFont(family="Segoe UI", size=12),
-                width=60, state="disabled",
-            ).pack(side="left", padx=(0, 6))
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                width=52, state="disabled",
+            )
+            btn.pack(side="left", padx=(0, 4))
+            self._export_btns[fmt] = btn
 
         self._btn_open_output = ctk.CTkButton(
-            self._right, text="Open output folder",
+            sb, text="Open output folder",
             command=self._open_output_folder,
             fg_color="#313244", hover_color="#45475a",
-            font=ctk.CTkFont(family="Segoe UI", size=12),
+            font=ctk.CTkFont(family="Segoe UI", size=11),
             state="disabled",
         )
-        self._btn_open_output.pack(padx=20, pady=(8, 0), fill="x")
+        self._btn_open_output.pack(padx=12, fill="x")
+
+    # --- actions ---
 
     def _select_image(self) -> None:
         path = filedialog.askopenfilename(
@@ -229,6 +252,7 @@ class App(ctk.CTk):
         self._progress.set(0)
         self._progress_label.configure(text="")
         self._set_export_state("disabled")
+        self._tabs.set("Original")
 
     def _reset(self) -> None:
         self._image_path = None
@@ -248,19 +272,14 @@ class App(ctk.CTk):
         self._set_export_state("disabled")
 
     def _set_export_state(self, state: str) -> None:
-        for child in self._right.winfo_children():
-            if isinstance(child, ctk.CTkFrame):
-                for btn in child.winfo_children():
-                    if isinstance(btn, ctk.CTkButton) and btn.cget("text") in (".obj", ".glb", ".ply"):
-                        btn.configure(state=state)
+        for btn in self._export_btns.values():
+            btn.configure(state=state)
         self._btn_open_output.configure(state=state)
 
     def _set_status(self, text: str, color: str = "#f9e2af") -> None:
-        # updates the status label from any thread
         post_to_main(self._status_label.configure, text=text, text_color=color)
 
     def _set_progress(self, value: float, label: str = "") -> None:
-        # updates progress bar and label from any thread (value: 0.0 to 1.0)
         post_to_main(self._progress.set, value)
         post_to_main(
             self._progress_label.configure,
@@ -271,12 +290,13 @@ class App(ctk.CTk):
         self._panel_processed.load_image(path)
         size_kb = Path(path).stat().st_size // 1024
         self._label_meta_processed.configure(text=f"512x512  •  RGBA  •  {size_kb} KB")
+        self._tabs.set("Preprocessed")
 
     def _show_mesh(self, path: str) -> None:
-        # loads mesh into viewer and enables export buttons
         self._mesh_viewer.load_mesh(path)
         self._label_mesh_hint.configure(text="drag to rotate  •  scroll to zoom")
         self._set_export_state("normal")
+        self._tabs.set("3D Viewer")
 
     def _on_run(self) -> None:
         self._btn_run.configure(state="disabled")
@@ -339,7 +359,7 @@ class App(ctk.CTk):
         self._set_progress(1.0, "done")
         mesh_kb = Path(self._mesh_path).stat().st_size // 1024
         self._status_label.configure(
-            text=f"Mesh ready — {Path(self._mesh_path).name}  •  {mesh_kb} KB",
+            text=f"Mesh ready\n{Path(self._mesh_path).name}\n{mesh_kb} KB",
             text_color="#a6e3a1",
         )
         self._show_mesh(self._mesh_path)
@@ -369,7 +389,7 @@ class App(ctk.CTk):
         if dest:
             export_mesh(self._mesh_path, dest)
             self._status_label.configure(
-                text=f"Exported to {Path(dest).name}", text_color="#a6e3a1"
+                text=f"Exported\n{Path(dest).name}", text_color="#a6e3a1"
             )
 
     def _open_output_folder(self) -> None:
