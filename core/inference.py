@@ -1,7 +1,33 @@
 import sys
+import warnings
+import logging
 from pathlib import Path
 from PIL import Image
 import torch
+
+# silence all hf hub and transformers output
+warnings.filterwarnings("ignore", message=".*unauthenticated.*")
+warnings.filterwarnings("ignore", message=".*symlink.*")
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+logging.getLogger("transformers").setLevel(logging.ERROR)
+
+import os as _os
+_os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1")
+_os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
+# patch huggingface_hub to suppress the unauthenticated warning printed to stderr
+try:
+    import huggingface_hub.utils._headers as _hf_headers
+    _orig_build = _hf_headers.build_hf_headers
+
+    def _silent_build_hf_headers(**kwargs):
+        import io, contextlib
+        with contextlib.redirect_stderr(io.StringIO()):
+            return _orig_build(**kwargs)
+
+    _hf_headers.build_hf_headers = _silent_build_hf_headers
+except Exception:
+    pass
 
 
 # add vendor/TripoSR to path so tsr can be imported without pip install
